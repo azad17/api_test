@@ -1,23 +1,31 @@
-import json
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-import urllib
-import json
 import datetime as dt
+import json
 import time
+import urllib
+from collections import defaultdict
+
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 SHIFT_API_URL = 'https://gitlab.com/-/snippets/2094509/raw/master/sample_json_1.json'
 MACHINE_API_URL = 'https://gitlab.com/-/snippets/2094509/raw/master/sample_json_2.json'
 BELT_API_URL = 'https://gitlab.com/-/snippets/2094509/raw/master/sample_json_3.json'
 
+'''creating a class to calculate the shift count''' 
 
 class ShiftCountApi(APIView):
     def get(self, request):
-        start_time = dt.datetime.strptime(request.query_params("start_time"), "%Y-%m-%dT%H:%M:%SZ")
-        end_time = dt.datetime.strptime(request.query_params("end_time"), "%Y-%m-%dT%H:%M:%SZ")
+#checking the user queries in a try block
+        try:
+            start_time = dt.datetime.strptime(request.query_params.get("start_time"), "%Y-%m-%dT%H:%M:%SZ")
+            end_time = dt.datetime.strptime(request.query_params.get("end_time"), "%Y-%m-%dT%H:%M:%SZ")
+        except TypeError:
+            return Response({}, status=status.HTTP_400_BAD_REQUEST)
         result = urllib.request.urlopen(SHIFT_API_URL)
         data = json.loads(result.read())
+
+#lambda function to filter out values in the given time intervals
 
         filter_date_range = lambda x: True if start_time <= dt.datetime.strptime(
             x['time'], "%Y-%m-%d %H:%M:%S") < end_time else False
@@ -64,11 +72,17 @@ class ShiftCountApi(APIView):
 
         return Response(shift_count)
 
-
+'''class to find out the total run time, downtime and machine utilization
+in a given time inetrval'''
 class MachineUtilization(APIView):
     def get(self, request):
-        start_time = dt.datetime.strptime(request.query_params("start_time"), "%Y-%m-%dT%H:%M:%SZ")
-        end_time = dt.datetime.strptime(request.query_params("end_time"), "%Y-%m-%dT%H:%M:%SZ")
+        try:
+            
+            start_time = dt.datetime.strptime(request.query_params.get("start_time"), "%Y-%m-%dT%H:%M:%SZ")
+            end_time = dt.datetime.strptime(request.query_params.get("end_time"), "%Y-%m-%dT%H:%M:%SZ")
+        except TypeError:
+            return Response({}, status=status.HTTP_400_BAD_REQUEST)
+
         result = urllib.request.urlopen(MACHINE_API_URL)
         data = json.loads(result.read())
 
@@ -82,7 +96,6 @@ class MachineUtilization(APIView):
             'utilisation': 0
         }
         for data in filtered_data:
-            print(data['time'])
             machine_data['runtime'] += data['runtime']
             if data['runtime'] > max_runtime:
                 machine_data['downtime'] += (data['runtime'] - max_runtime)
@@ -94,18 +107,22 @@ class MachineUtilization(APIView):
 
         return Response(machine_data)
 
+''' a class to find out average of belt1 and belt2 in the given time interval'''
 
 class BeltAverage(APIView):
     def get(self, request):
-        start_time = dt.datetime.strptime("2021-01-28T18:30:00Z", "%Y-%m-%dT%H:%M:%SZ")
-        end_time = dt.datetime.strptime("2021-01-28T20:10:00Z", "%Y-%m-%dT%H:%M:%SZ")
+        try:
+            start_time = dt.datetime.strptime(request.query_params.get("start_time"), "%Y-%m-%dT%H:%M:%SZ")
+            end_time = dt.datetime.strptime(request.query_params.get("end_time"), "%Y-%m-%dT%H:%M:%SZ")
+        except TypeError:
+            return Response({}, status=status.HTTP_400_BAD_REQUEST)
+
         result = urllib.request.urlopen(BELT_API_URL)
         data = json.loads(result.read())
 
         filter_daterange = lambda x: True if start_time <= dt.datetime.strptime(
             x['time'], "%Y-%m-%d %H:%M:%S") <= end_time else False
         filtered_data = filter(filter_daterange, data)
-        from collections import defaultdict
         total_data = defaultdict(dict)
         for data in filtered_data:
             if data['state'] == True:
@@ -125,6 +142,7 @@ class BeltAverage(APIView):
                 total_data[data['id'][-1]]['count'] += 1
                 total_data[data['id'][-1]]['id'] = data['id'][-1]
 
+#creating a dictionary with the output values
         output_data = [
             {
                 "id": v['id'],
@@ -134,3 +152,4 @@ class BeltAverage(APIView):
         ]
 
         return Response(output_data)
+
